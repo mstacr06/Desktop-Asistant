@@ -23,51 +23,38 @@ In the second week of the project, I focused on building the core speech recogni
    pip install speechrecognition pyttsx3 pyaudio
 
    
-Week 3: Core Assistant Mechanics & System Integration
+## 📅 Week 3: Core Assistant Mechanics & System Integration
 
-During this week, the foundational structure of the desktop assistant was implemented and core system interaction features were developed.
-For faster debugging and a more stable development workflow, all assistant responses were temporarily directed to the terminal/console output.
+This week marks a major milestone where the core architecture of the desktop assistant was established and primary commands for operating system interaction were implemented. 
 
-🚀 Features Implemented
-🎤 Speech-to-Text Recognition
+> **Note:** To ensure a faster and error-free development cycle, all assistant responses are currently routed to **terminal (console) outputs**.
 
-Integrated the SpeechRecognition library to capture voice commands from the microphone and convert them into text.
+### 🚀 New Features
 
-🖥️ System Commands
-Retrieved and displayed the local system date and time using the datetime module.
-Added basic conversational responses such as greetings and simple interactions.
-⚙️ Application & Browser Automation
-Used os.system to launch built-in Windows applications such as:
-Notepad
-Calculator
-Spotify
-Used the webbrowser module to open:
-Google
-YouTube
-Predefined media links
-🌦️ Weather API Integration
+#### 🎙️ Speech-to-Text (STT) Processing
+Integrated the `speech_recognition` library to convert live microphone input into processable string data, enabling hands-free interaction.
 
-Integrated the OpenWeatherMap API to provide real-time weather information.
-The assistant extracts the city name from the spoken command and sends HTTP requests using the requests module.
+#### 🖥️ System & Conversation Commands
+*   **Time & Date:** Implemented the `datetime` module to provide real-time local information.
+*   **Social Interaction:** Added basic conversational capabilities such as greetings and small talk.
 
-❌ Graceful Exit System
+#### 🤖 App & Browser Automation
+*   **Native Integration:** Utilized the `os` module to launch Windows applications like **Notepad**, **Calculator**, and **Spotify** without external dependencies.
+*   **Web Navigation:** Implemented the `webbrowser` module to trigger the default browser for Google searches, YouTube, and custom media URLs.
 
-Implemented controlled shutdown commands such as:
+#### ☁️ External API Integration (Weather Service)
+*   Integrated the **OpenWeatherMap API** to provide real-time weather updates. 
+*   The system parses city names from voice commands and fetches data using the `requests` module.
 
-"exit"
-"close"
-"shutdown assistant"
+#### 🔐 Graceful Exit
+Added secure termination triggers (e.g., "exit", "close", "stop") to stop the background infinite loop safely.
 
-This allows the assistant loop to terminate safely without forcing the program to stop manually.
+### 🛠️ Technologies & Dependencies
 
-🛠️ Technologies & Libraries Used
-External Libraries
-SpeechRecognition
-PyAudio
-requests
-Standard Python Libraries
-os
-datetime
-webbrowser
-random
-time
+| Category | Tools / Libraries |
+| :--- | :--- |
+| **External Libraries** | `SpeechRecognition`, `PyAudio`, `requests` |
+| **Standard Libraries** | `os`, `datetime`, `webbrowser`, `random`, `time` |
+| **APIs** | OpenWeatherMap API |
+
+---
