@@ -23,24 +23,51 @@ In the second week of the project, I focused on building the core speech recogni
    pip install speechrecognition pyttsx3 pyaudio
 
    
-## Week 3: Core Assistant Mechanics & System Integration
+Week 3: Core Assistant Mechanics & System Integration
 
-Bu hafta, masaüstü asistanının temel iskeleti oluşturuldu ve işletim sistemiyle etkileşime giren çekirdek komutlar kodlandı. Geliştirme ve test süreçlerinin daha hızlı/hatasız ilerleyebilmesi adına, asistanın yanıtları bu aşamada doğrudan **terminal (console) çıktılarına** yönlendirilmiştir.
+During this week, the foundational structure of the desktop assistant was implemented and core system interaction features were developed.
+For faster debugging and a more stable development workflow, all assistant responses were temporarily directed to the terminal/console output.
 
-### 🚀 Eklenen Yeni Özellikler (Features)
+🚀 Features Implemented
+🎤 Speech-to-Text Recognition
 
-*   **Sesli Komut Algılama (Speech-to-Text):** `speech_recognition` kütüphanesi kullanılarak kullanıcının mikrofon üzerinden verdiği sesli komutlar metne (string) dönüştürüldü.
-*   **Sistem Komutları (System Commands):** 
-    *   `datetime` modülü ile bilgisayarın yerel saati ve tarihi çekilerek kullanıcıya sunuldu.
-    *   Asistana temel sohbet yetenekleri (selamlama, hal hatır sorma) eklendi.
-*   **Uygulama ve Tarayıcı Otomasyonu (Open Applications):**
-    *   `os.system` modülü kullanılarak dış bir bağımlılık olmadan Windows yerleşik programlarının (Notepad, Calc) ve Spotify'ın başlatılması sağlandı.
-    *   `webbrowser` modülü kullanılarak Google, YouTube ve önceden belirlenmiş medya linklerinin varsayılan tarayıcıda açılması sağlandı.
-*   **Dış API Entegrasyonu (Weather API):**
-    *   OpenWeatherMap API kullanılarak sisteme hava durumu yeteneği kazandırıldı. Sesli komutun içinden şehir ismi ayrıştırılıp, `requests` modülü ile anlık sıcaklık ve hava durumu bilgisi çekildi.
-*   **Kontrollü Çıkış (Graceful Exit):** Asistanın arka planda sonsuz döngüde çalışmasını durdurmak için ("kapat", "çıkış yap" gibi) terminal komutlarıyla sistemi sonlandırma eklendi.
+Integrated the SpeechRecognition library to capture voice commands from the microphone and convert them into text.
 
-### 🛠️ Kullanılan Teknolojiler ve Kütüphaneler (Dependencies)
-*   **Harici Kütüphaneler:** `SpeechRecognition`, `PyAudio` (Mikrofon erişimi için), `requests` (API HTTP çağrıları için).
-*   **Standart Kütüphaneler:** `os`, `datetime`, `webbrowser`, `random`, `time`.
+🖥️ System Commands
+Retrieved and displayed the local system date and time using the datetime module.
+Added basic conversational responses such as greetings and simple interactions.
+⚙️ Application & Browser Automation
+Used os.system to launch built-in Windows applications such as:
+Notepad
+Calculator
+Spotify
+Used the webbrowser module to open:
+Google
+YouTube
+Predefined media links
+🌦️ Weather API Integration
 
+Integrated the OpenWeatherMap API to provide real-time weather information.
+The assistant extracts the city name from the spoken command and sends HTTP requests using the requests module.
+
+❌ Graceful Exit System
+
+Implemented controlled shutdown commands such as:
+
+"exit"
+"close"
+"shutdown assistant"
+
+This allows the assistant loop to terminate safely without forcing the program to stop manually.
+
+🛠️ Technologies & Libraries Used
+External Libraries
+SpeechRecognition
+PyAudio
+requests
+Standard Python Libraries
+os
+datetime
+webbrowser
+random
+time
