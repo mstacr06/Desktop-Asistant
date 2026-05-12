@@ -44,4 +44,3 @@ Bu hafta, masaüstü asistanının temel iskeleti oluşturuldu ve işletim siste
 *   **Harici Kütüphaneler:** `SpeechRecognition`, `PyAudio` (Mikrofon erişimi için), `requests` (API HTTP çağrıları için).
 *   **Standart Kütüphaneler:** `os`, `datetime`, `webbrowser`, `random`, `time`.
 
-> **Not:** Sunum performansını artırmak ve komut tepki süresini (latency) düşürmek amacıyla Text-to-Speech (Metinden Sese) modülleri geçici olarak devre dışı bırakılmıştır. İlerleyen haftalarda sesli yanıt sistemi tekrar entegre edilecektir.
