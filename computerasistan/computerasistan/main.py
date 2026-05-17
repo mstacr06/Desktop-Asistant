@@ -1,13 +1,16 @@
-# GEREKLİ KURULUM:
-# pip install SpeechRecognition requests pyaudio
+
 
 import speech_recognition as sr
 import datetime
-import webbrowser
 import os
 import random
 import requests
 import time
+from gtts import gTTS
+from playsound import playsound
+import wikipedia
+import pyautogui
+import feedparser
 
 # -----------------------------------
 # AYARLAR
@@ -15,196 +18,587 @@ import time
 
 API_KEY = "b8768819961d2139e8acbafc2ad8c1f2"
 
+DEMO_MODE = False
+
 listener = sr.Recognizer()
 
+listener.pause_threshold = 0.5
+listener.dynamic_energy_threshold = True
+listener.energy_threshold = 300
+
 # -----------------------------------
-# TERMİNALE YAZDIRMA 
+# KOMUTLAR
 # -----------------------------------
+
+KOMUTLAR = {
+    "selamlasma": [
+        "merhaba", "selam", "naber", "nasılsın",
+        "ne haber", "napıyosun", "hey"
+    ],
+
+    "saat": [
+        "saat kaç", "saat", "zaman nedir"
+    ],
+
+    "tarih": [
+        "bugün tarih ne", "tarih", "ayın kaçı"
+    ],
+
+    "saka": [
+        "şaka yap", "beni güldür", "espri yap"
+    ],
+
+    "hava": [
+        "hava durumu", "hava nasıl", "kaç derece"
+    ],
+
+    "bilgi": [
+        "kimdir", "nedir", "hakkında bilgi", "araştır"
+    ],
+
+    "haber": [
+        "haberler", "gündem", "son dakika"
+    ],
+
+    "yazi_tura": [
+        "yazı tura", "para at"
+    ],
+
+    "zar": [
+        "zar at", "zar salla"
+    ],
+
+    "ekran_goruntusu": [
+        "ekran görüntüsü", "ss al"
+    ],
+
+    "ses_kapat": [
+        "sesi kapat", "sessize al"
+    ],
+
+    "ses_ac": [
+        "sesi aç"
+    ],
+
+    "ses_yukselt": [
+        "ses yükselt", "ses arttır"
+    ],
+
+    "ses_kis": [
+        "sesi kıs", "sesi azalt"
+    ],
+
+    "uygulama_ac": [
+        "aç", "başlat", "çalıştır"
+    ],
+
+    "cikis": [
+        "kapat", "uyu", "görüşürüz",
+        "baybay", "çıkış yap"
+    ]
+}
+
+# -----------------------------------
+# SES MOTORU
+# -----------------------------------
+
+def speak(text):
+    try:
+        dosya_adi = "asistan_ses.mp3"
+
+        if os.path.exists(dosya_adi):
+            os.remove(dosya_adi)
+
+        tts = gTTS(text=text, lang='tr', slow=False)
+        tts.save(dosya_adi)
+
+        playsound(dosya_adi, block=True)
+
+        time.sleep(0.2)
+
+        if os.path.exists(dosya_adi):
+            os.remove(dosya_adi)
+
+    except Exception as e:
+        print(f"\n[SES HATASI]: {e}")
 
 def asistan_mesaj(text):
-    """Asistanın yanıtlarını sadece terminale yazdırır."""
     print(f"\nAsistan: {text}")
+    speak(text)
 
 # -----------------------------------
-# KOMUT DİNLEME
+# DİNLEME
 # -----------------------------------
 
-def take_command():
+is_noise_adjusted = False
+
+def take_command(
+    mesaj="Dinleniyor...",
+    timeout_suresi=8,
+    limit_suresi=15
+):
+    global is_noise_adjusted
+
     command = ""
 
     try:
         with sr.Microphone() as source:
-            print("\nDinleniyor...")
-            listener.adjust_for_ambient_noise(source, duration=1)
-            audio = listener.listen(source)
+
+            if not is_noise_adjusted:
+                print("\n[Ortam sesi ayarlanıyor...]")
+                listener.adjust_for_ambient_noise(source, duration=1)
+                is_noise_adjusted = True
+
+            print(f"\n{mesaj}")
+
+            audio = listener.listen(
+                source,
+                timeout=timeout_suresi,
+                phrase_time_limit=limit_suresi
+            )
 
             command = listener.recognize_google(
                 audio,
                 language="tr-TR"
-            )
+            ).lower()
 
-            command = command.lower()
             print(f"Sen: {command}")
 
-    except:
+    except sr.WaitTimeoutError:
         pass
 
-    return command
+    except sr.UnknownValueError:
+        pass
+
+    except Exception as e:
+        print(f"\n[MİKROFON HATASI]: {e}")
+
+    return command.strip()
 
 # -----------------------------------
-# SAAT
+# WAKE WORD
+# -----------------------------------
+
+WAKE_WORDS = [
+    "hey asistan",
+    "asistan"
+]
+
+def listen_for_wake_word():
+
+    print("\n[Uyandırma Kelimesi Bekleniyor]")
+
+    command = take_command(
+        mesaj="...",
+        timeout_suresi=5,
+        limit_suresi=5
+    )
+
+    return any(
+        wake_word in command
+        for wake_word in WAKE_WORDS
+    )
+
+# -----------------------------------
+# INTENT BUL
+# -----------------------------------
+
+def intent_bul(command):
+
+    for niyet, kelimeler in KOMUTLAR.items():
+
+        if any(
+            kelime in command
+            for kelime in kelimeler
+        ):
+            return niyet
+
+    return None
+
+# -----------------------------------
+# YARDIMCI FONKSİYONLAR
 # -----------------------------------
 
 def tell_time():
-    now = datetime.datetime.now()
-    saat = now.strftime("%H:%M")
-    asistan_mesaj("Şu an saat " + saat)
 
-# -----------------------------------
-# TARİH
-# -----------------------------------
+    now = datetime.datetime.now()
+
+    asistan_mesaj(
+        "Şu an saat " +
+        now.strftime("%H:%M")
+    )
 
 def tell_date():
-    now = datetime.datetime.now()
-    tarih = now.strftime("%d.%m.%Y")
-    asistan_mesaj("Bugünün tarihi " + tarih)
 
-# -----------------------------------
-# ŞAKA
-# -----------------------------------
+    now = datetime.datetime.now()
+
+    asistan_mesaj(
+        "Bugünün tarihi " +
+        now.strftime("%d.%m.%Y")
+    )
 
 def tell_joke():
+
     jokes = [
-        "Yazılımcının sevgilisi neden ayrılmış? Çünkü adam her tartışmada 'sorun sende değil, sistemde bug var' demiş."
+        "Yazılımcının sevgilisi neden ayrılmış? Çünkü adam her tartışmada sistemde bug var demiş.",
+
+        "İki bit yolda karşılaşıyor. Biri diyor ki sıfırın altındayım kardeşim."
     ]
+
     asistan_mesaj(random.choice(jokes))
 
-# -----------------------------------
-# ŞEHİR ALGILAMA
-# -----------------------------------
-
 def get_city(command):
-    temizlenecek = [
-        "hava", "durumu", "nasıl", "kaç",
-        "derece", "bugün", "yarın",
-        "söyle", "bana", "nedir"
-    ]
+
+    # Önce tam kelime gruplarını temizle ("hava durumu", "hava nasıl" vb.)
+    for kalip in KOMUTLAR["hava"]:
+        command = command.replace(kalip, "")
+
+    temizlenecek_ekstra = ["da", "de", "için", "söyle", "hava"]
 
     kelimeler = command.split()
-    city_words = []
 
-    for kelime in kelimeler:
-        if kelime not in temizlenecek:
-            city_words.append(kelime)
+    city_words = [
+        k for k in kelimeler
+        if k not in temizlenecek_ekstra
+    ]
 
     city = " ".join(city_words).strip()
 
-    if city == "":
-        city = "Istanbul"
-
-    return city.title()
-
-# -----------------------------------
-# HAVA DURUMU
-# -----------------------------------
+    return city.title() if city else "Ankara"
 
 def weather(city):
+
     try:
+
         url = (
             f"https://api.openweathermap.org/data/2.5/weather?"
             f"q={city}&appid={API_KEY}&units=metric&lang=tr"
         )
 
         response = requests.get(url)
+
         data = response.json()
 
         if data["cod"] != 200:
-            asistan_mesaj("Şehir bulunamadı.")
+            asistan_mesaj("Şehri bulamadım.")
             return
 
         derece = data["main"]["temp"]
-        hissedilen = data["main"]["feels_like"]
         durum = data["weather"][0]["description"]
 
-        mesaj = (
-            f"{city} için güncel hava durumu: {durum}. "
-            f"Sıcaklık {round(derece)} derece, hissedilen {round(hissedilen)} derece."
+        asistan_mesaj(
+            f"{city} için hava {durum}. "
+            f"Sıcaklık {round(derece)} derece."
         )
 
-        asistan_mesaj(mesaj)
-
     except:
-        asistan_mesaj("Hava durumu bilgisi alınamadı.")
+        asistan_mesaj("Hava durumunu çekemedim.")
 
 # -----------------------------------
-# KOMUTLAR
+# ANA ASİSTAN
 # -----------------------------------
 
 def run_assistant():
-    command = take_command()
-    time.sleep(0.3)
 
-    if "merhaba" in command or "selam" in command or "hello" in command or "hi" in command:
-        asistan_mesaj("Merhaba kral. Emrindeyim.")
+    while True:
 
-    elif "nasılsın" in command or "ne yapıyorsun" in command or "naber" in command or "ne haber" in command:
-        asistan_mesaj("Gayet iyiyim kral.")
+        command = take_command(
+            mesaj="Seni dinliyorum...",
+            timeout_suresi=8,
+            limit_suresi=15
+        )
 
-    elif "saat kaç" in command or "saati söyle" in command:
-        tell_time()
+        # Sessizlik varsa devam et
+        if len(command) < 2:
+            continue
 
-    elif "bugün tarih ne" in command or "tarih söyle" in command:
-        tell_date()
+        niyet = intent_bul(command)
 
-    elif "youtube aç" in command:
-        asistan_mesaj("YouTube açılıyor.")
-        webbrowser.open("https://www.youtube.com")
+        # -----------------------------------
 
-    elif "google aç" in command:
-        asistan_mesaj("Google açılıyor.")
-        webbrowser.open("https://www.google.com")
+        if niyet == "selamlasma":
 
-    elif "müzik aç" in command:
-        asistan_mesaj("Müzik açılıyor.")
-        webbrowser.open("https://www.youtube.com/results?search_query=music")
+            cevaplar = [
+                "Merhaba kral.",
+                "Buradayım kral.",
+                "Seni dinliyorum.",
+                "Nasıl yardımcı olayım?"
+            ]
 
-    elif "favori müzik aç" in command:
-        asistan_mesaj("Favori müzik açılıyor.")
-        webbrowser.open("https://www.youtube.com/watch?v=6mMGQ4fci7U")
+            asistan_mesaj(random.choice(cevaplar))
 
-    elif "hesap makinesi aç" in command:
-        asistan_mesaj("Hesap makinesi açılıyor.")
-        os.system("calc")
+        # -----------------------------------
 
-    elif "not defteri aç" in command:
-        asistan_mesaj("Not defteri açılıyor.")
-        os.system("notepad")
+        elif niyet == "saat":
+            tell_time()
 
-    elif "şaka yap" in command:
-        tell_joke()
+        elif niyet == "tarih":
+            tell_date()
 
-    elif "spotify" in command:
-        asistan_mesaj("Spotify açılıyor.")
-        os.system("spotify")    
+        elif niyet == "saka":
+            tell_joke()
 
-    elif "hava durumu" in command:
-        city = get_city(command)
-        weather(city)
+        # -----------------------------------
 
-    elif "kapat" in command or "çıkış yap" in command or "çık" in command or "görüşürüz" in command:
-        asistan_mesaj("Görüşürüz kral.")
-        exit()
+        elif niyet == "hava":
 
-    elif command != "":
-        asistan_mesaj("Bunu anlayamadım, tekrar söyler misin?")
+            city = get_city(command)
+
+            weather(city)
+
+        # -----------------------------------
+
+        elif niyet == "bilgi":
+
+            search_term = command
+
+            for word in KOMUTLAR["bilgi"]:
+                search_term = search_term.replace(word, "")
+
+            search_term = search_term.strip()
+
+            if not search_term:
+                asistan_mesaj("Neyi araştırmamı istediğini anlayamadım.")
+                continue
+
+            # Wikipedia'nın botları engellememesi için bir kimlik (User-Agent) tanımlıyoruz
+            wikipedia.set_user_agent("AsistanBot/1.0")
+            wikipedia.set_lang("tr")
+
+            try:
+
+                # Önce aranan kelimenin Wikipedia'daki en yakın başlığını arıyoruz
+                search_results = wikipedia.search(search_term)
+                
+                if not search_results:
+                    asistan_mesaj("Bununla ilgili bilgi bulamadım.")
+                    continue
+                    
+                en_iyi_sonuc = search_results[0]
+
+                asistan_mesaj(
+                    f"{en_iyi_sonuc} için araştırıyorum."
+                )
+
+                result = wikipedia.summary(
+                    en_iyi_sonuc,
+                    sentences=2,
+                    auto_suggest=False
+                )
+
+                asistan_mesaj(result)
+
+            except wikipedia.exceptions.DisambiguationError:
+
+                asistan_mesaj(
+                    "Birden fazla sonuç çıktı. "
+                    "Biraz daha net söyler misin?"
+                )
+
+            except wikipedia.exceptions.PageError:
+
+                asistan_mesaj(
+                    "Bununla ilgili bilgi bulamadım."
+                )
+
+            except Exception as e:
+
+                asistan_mesaj(
+                    "Wikipedia tarafında bir hata oluştu."
+                )
+                print(f"\n[WİKİPEDİA HATASI]: {e}")
+
+        # -----------------------------------
+
+        elif niyet == "haber":
+
+            try:
+
+                asistan_mesaj(
+                    "Güncel haberleri okuyorum."
+                )
+
+                feed = feedparser.parse(
+                    "https://www.trthaber.com/manset_articles.rss"
+                )
+
+                for i in range(3):
+
+                    asistan_mesaj(
+                        feed.entries[i].title
+                    )
+
+                    time.sleep(0.5)
+
+            except:
+
+                asistan_mesaj(
+                    "Haberlere ulaşamadım."
+                )
+
+        # -----------------------------------
+
+        elif niyet == "yazi_tura":
+
+            sonuc = random.choice([
+                "Yazı",
+                "Tura"
+            ])
+
+            asistan_mesaj(
+                f"Sonuç: {sonuc}"
+            )
+
+        # -----------------------------------
+
+        elif niyet == "zar":
+
+            sonuc = random.randint(1, 6)
+
+            asistan_mesaj(
+                f"Gelen sayı: {sonuc}"
+            )
+
+        # -----------------------------------
+
+        elif niyet == "ekran_goruntusu":
+
+            if DEMO_MODE:
+
+                asistan_mesaj(
+                    "Demo modunda ekran görüntüsü alınmadı."
+                )
+
+            else:
+
+                dosya_adi = (
+                    f"ekran_{int(time.time())}.png"
+                )
+
+                pyautogui.screenshot(dosya_adi)
+
+                asistan_mesaj(
+                    "Ekran görüntüsü alındı."
+                )
+
+        # -----------------------------------
+
+        elif niyet == "uygulama_ac":
+
+            app_name = command
+
+            for word in KOMUTLAR["uygulama_ac"]:
+                app_name = app_name.replace(word, "")
+
+            app_name = app_name.strip()
+
+            if not app_name:
+
+                asistan_mesaj(
+                    "Hangi uygulamayı açayım?"
+                )
+
+                continue
+
+            asistan_mesaj(
+                f"{app_name} açılıyor."
+            )
+
+            pyautogui.press("win")
+
+            time.sleep(0.5)
+
+            pyautogui.typewrite(app_name)
+
+            time.sleep(0.5)
+
+            pyautogui.press("enter")
+
+        # -----------------------------------
+
+        elif niyet == "ses_kapat":
+
+            if not DEMO_MODE:
+                pyautogui.press("volumemute")
+
+            asistan_mesaj("Ses kapatıldı.")
+
+        # -----------------------------------
+
+        elif niyet == "ses_ac":
+
+            if not DEMO_MODE:
+                pyautogui.press("volumemute")
+
+            asistan_mesaj("Ses açıldı.")
+
+        # -----------------------------------
+
+        elif niyet == "ses_yukselt":
+
+            if not DEMO_MODE:
+
+                for _ in range(10):
+                    pyautogui.press("volumeup")
+
+            asistan_mesaj(
+                "Ses yükseltildi."
+            )
+
+        # -----------------------------------
+
+        elif niyet == "ses_kis":
+
+            if not DEMO_MODE:
+
+                for _ in range(10):
+                    pyautogui.press("volumedown")
+
+            asistan_mesaj(
+                "Ses düşürüldü."
+            )
+
+        # -----------------------------------
+
+        elif niyet == "cikis":
+
+            asistan_mesaj(
+                "Tamam kral. Tekrar çağırırsan buradayım."
+            )
+
+            return True
+
+        # -----------------------------------
+
+        else:
+
+            asistan_mesaj(
+                "Bunu anlayamadım. "
+                "Farklı şekilde söyler misin?"
+            )
 
 # -----------------------------------
 # BAŞLANGIÇ
 # -----------------------------------
 
-print("-----------------------------------------")
-asistan_mesaj("Merhaba. Yapay zekan hazır.")
-print("-----------------------------------------")
+print("-----------------------------------")
+
+asistan_mesaj(
+    "Sistem hazır. Uyandırılmayı bekliyorum."
+)
+
+print("-----------------------------------")
 
 while True:
-    run_assistant()
+
+    if listen_for_wake_word():
+
+        asistan_mesaj(
+            random.choice([
+                "Efendim?",
+                "Dinliyorum.",
+                "Buradayım."
+            ])
+        )
+
+        run_assistant()
