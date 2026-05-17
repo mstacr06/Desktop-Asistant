@@ -58,3 +58,42 @@ Added secure termination triggers (e.g., "exit", "close", "stop") to stop the ba
 | **APIs** | OpenWeatherMap API |
 
 ---
+## 📅 Week 4 Update: Advanced Automation & NLP Engine Upgrade
+
+This week focused on making the assistant more autonomous, enhancing the text-to-speech quality, and completely overhauling the command recognition logic for better scalability.
+
+### 🚀 New Features
+
+#### 🧠 Dynamic Intent Recognition
+Shifted the command recognition logic from static conditions to a dynamic, dictionary-based mapping system (`KOMUTLAR`). This allows the assistant to understand multiple phrasing variations for a single intent (e.g., mapping "aç", "başlat", and "çalıştır" all to the application launch function) seamlessly.
+
+#### 🎙️ Continuous Listening & Wake Word
+Implemented a background `listen_for_wake_word()` loop. The system now rests in a standby mode, actively listening for triggers like "hey asistan" before engaging the main interaction engine.
+
+#### 🗣️ Voice Engine Overhaul
+Upgraded the text-to-speech implementation by transitioning to `gTTS` (Google Text-to-Speech) combined with `playsound`. This provides a much higher-quality, natural-sounding Turkish voice response system, complete with automated temporary audio file management.
+
+#### 🖥️ Advanced Desktop Automation
+Integrated `pyautogui` to gain deeper system-level control without needing native Windows API calls:
+*   **Audio Control:** Hardware-level simulation to mute, raise, or lower system volume.
+*   **Screen Capture:** Automated screenshot functionality that saves images with unique timestamps.
+*   **Dynamic App Launching:** Simulates keyboard presses (Windows key + typing) to search for and launch any application dynamically based on voice input.
+
+#### 📚 Live Information & RSS Feeds
+*   **Wikipedia API:** Added the ability to fetch, summarize, and dictate information on the fly, complete with error handling for disambiguation.
+*   **News Integration:** Utilized `feedparser` to parse and read real-time breaking news headlines directly from the TRT Haber RSS feed.
+
+### 🛠️ Technologies & Dependencies
+
+| Category | Tools / Libraries |
+| :--- | :--- |
+| **External Libraries** | `SpeechRecognition`, `gTTS`, `playsound`, `wikipedia`, `pyautogui`, `feedparser`, `requests` |
+| **Standard Libraries** | `os`, `datetime`, `random`, `time` |
+| **APIs & Feeds** | OpenWeatherMap API, TRT Haber RSS, Google Web Speech API |
+
+---
+
+
+
+
+
