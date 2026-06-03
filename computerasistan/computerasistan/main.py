@@ -5,7 +5,8 @@ import random
 import requests
 import time
 from gtts import gTTS
-from playsound import playsound
+import io
+import pygame
 import wikipedia
 import pyautogui
 import feedparser
@@ -21,6 +22,9 @@ import webbrowser
 # -----------------------------------
 API_KEY = "b8768819961d2139e8acbafc2ad8c1f2"
 DEMO_MODE = False
+
+# Ses motorunu başlat (Hızlı RAM oynatması için)
+pygame.mixer.init()
 
 listener = sr.Recognizer()
 listener.pause_threshold = 1
@@ -78,21 +82,26 @@ def ui_status(text):
     app.after(0, lambda: status_label.configure(text=text))
 
 # -----------------------------------
-# SES MOTORU
+# SES MOTORU (HIZLANDIRILMIŞ)
 # -----------------------------------
 def speak(text):
     try:
-        dosya_adi = "asistan_ses.mp3"
-        if os.path.exists(dosya_adi):
-            os.remove(dosya_adi)
-
+        # Sesi Google'dan alıyoruz (lang='tr' ile doğrudan Türkçe)
         tts = gTTS(text=text, lang='tr', slow=False)
-        tts.save(dosya_adi)
-        playsound(dosya_adi, block=True)
-        time.sleep(0.2)
-
-        if os.path.exists(dosya_adi):
-            os.remove(dosya_adi)
+        
+        # Sesi diske kaydetmek yerine RAM'de (bellekte) tutuyoruz
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        fp.seek(0) # Dosyanın başına dön
+        
+        # Pygame ile sesi bellekten anında çalıyoruz
+        pygame.mixer.music.load(fp, "mp3")
+        pygame.mixer.music.play()
+        
+        # Ses bitene kadar bekle (Asistanın lafı bitmeden dinlemeye geçmemesi için)
+        while pygame.mixer.music.get_busy():
+            pygame.time.Clock().tick(10)
+            
     except Exception as e:
         ui_log(f"[SES HATASI]: {e}")
 
@@ -134,7 +143,7 @@ def take_command(mesaj="Dinleniyor...", timeout_suresi=8, limit_suresi=15):
 # -----------------------------------
 # WAKE WORD
 # -----------------------------------
-WAKE_WORDS = ["hey asistan", "asistan","orda mısın"]
+WAKE_WORDS = ["hey asistan", "asistan", "orda mısın"]
 
 def listen_for_wake_word():
     ui_status("Uyandırma Kelimesi Bekleniyor")
@@ -169,7 +178,7 @@ def intent_bul(command):
     return None
 
 # -----------------------------------
-# YARDIMCI FONKSİYONLAR (Aynı)
+# YARDIMCI FONKSİYONLAR
 # -----------------------------------
 def tell_time():
     now = datetime.datetime.now()
@@ -182,7 +191,7 @@ def tell_date():
 def tell_joke():
     jokes = [
         "Yazılımcının sevgilisi neden ayrılmış? Çünkü adam her tartışmada sistemde bug var demiş.",
-        "İki bit yolda karşılaşıyor. Biri diyor ki sıfırın altındayım kardeşim.",""
+        "İki bit yolda karşılaşıyor. Biri diyor ki sıfırın altındayım kardeşim."
     ]
     asistan_mesaj(random.choice(jokes))
 
@@ -209,6 +218,49 @@ def weather(city):
         asistan_mesaj(f"{city} için hava {durum}. Sıcaklık {round(derece)} derece.")
     except:
         asistan_mesaj("Hava durumunu çekemedim.")
+
+def search_wikipedia(command):
+    temizlenecek = ["kimdir", "nedir", "hakkında", "bilgi", "araştır"]
+    kelimeler = command.split()
+    query_words = [k for k in kelimeler if k not in temizlenecek]
+    query = " ".join(query_words).strip()
+
+    if not query:
+        asistan_mesaj("Neyi araştırmamı istersin?")
+        return
+
+    ui_status("Vikipedi'de aranıyor...") 
+    
+    try:
+        wikipedia.set_lang("tr")
+        
+        # 1. ADIM: Doğrudan sayfa çekmek yerine önce en iyi 1 sonucu aratıyoruz (Daha isabetli)
+        arama_sonuclari = wikipedia.search(query, results=1)
+        
+        if not arama_sonuclari:
+            asistan_mesaj("Vikipedi'de bununla ilgili bir şey bulamadım.")
+            return
+            
+        en_iyi_sonuc = arama_sonuclari[0]
+        
+        # 2. ADIM: auto_suggest=False yaparak gereksiz 2. API isteğini engelliyoruz (Hızlandırır)
+        sonuc = wikipedia.summary(en_iyi_sonuc, sentences=2, auto_suggest=False)
+        asistan_mesaj(sonuc)
+        
+    except wikipedia.exceptions.DisambiguationError as e:
+        # HATA YÖNETİMİ: Eğer aranan kelime birden fazla anlama geliyorsa
+        try:
+            ilk_secenek = e.options[0]
+            sonuc = wikipedia.summary(ilk_secenek, sentences=2, auto_suggest=False)
+            asistan_mesaj(sonuc)
+        except:
+            asistan_mesaj("Bununla ilgili birden fazla sonuç var, biraz daha spesifik söyler misin?")
+            
+    except wikipedia.exceptions.PageError:
+        asistan_mesaj("Vikipedi'de böyle bir sayfa bulamadım.")
+    except Exception as e:
+        ui_log(f"[WIKI HATASI]: {e}")
+        asistan_mesaj("Araştırma sırasında bir hata oluştu.")
 
 # -----------------------------------
 # UYGULAMA AÇMA (FUZZY MATCHING İLE)
@@ -286,8 +338,7 @@ def run_assistant():
             city = get_city(command)
             weather(city)
         elif niyet == "bilgi":
-            # Simplified for brevity; you can paste your full wiki block here
-            asistan_mesaj("Bilgi araması başlatılıyor...")
+            search_wikipedia(command)
         elif niyet == "haber":
             asistan_mesaj("Haberler çekiliyor...")
         elif niyet == "yazi_tura":
