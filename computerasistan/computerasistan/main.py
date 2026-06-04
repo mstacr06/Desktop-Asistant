@@ -9,13 +9,16 @@ import io
 import pygame
 import wikipedia
 import pyautogui
-import feedparser
 import threading
 import customtkinter as ctk
 from thefuzz import process
 import sys
 import subprocess
 import webbrowser
+import feedparser 
+
+# Wikipedia API'sine kendimizi tanıtıyoruz ki bizi engellemesin
+wikipedia.set_user_agent("AsistanProjesi/1.0 (wmustafaacarw@gmail.com)")
 
 # -----------------------------------
 # AYARLAR
@@ -23,7 +26,7 @@ import webbrowser
 API_KEY = "b8768819961d2139e8acbafc2ad8c1f2"
 DEMO_MODE = False
 
-# Ses motorunu başlat (Hızlı RAM oynatması için)
+# Ses motorunu başlat
 pygame.mixer.init()
 
 listener = sr.Recognizer()
@@ -49,7 +52,11 @@ KOMUTLAR = {
     "ses_ac": ["sesi aç"],
     "ses_yukselt": ["ses yükselt", "ses arttır"],
     "ses_kis": ["sesi kıs", "sesi azalt"],
-    "uygulama_ac": ["aç", "başlat", "çalıştır", "açar mısın", "açsana", "başlatır mısın", "hadi aç", "açalım"],
+    "uygulama_ac": [
+        "aç", "başlat", "çalıştır", "açar mısın", 
+        "whatsapp aç", "spotify aç", "youtube aç", "chrome aç", 
+        "uygulama aç", "program aç"
+    ],
     "cikis": ["kapat", "uyu", "görüşürüz", "baybay", "çıkış yap"]
 }
 
@@ -82,25 +89,28 @@ def ui_status(text):
     app.after(0, lambda: status_label.configure(text=text))
 
 # -----------------------------------
-# SES MOTORU (HIZLANDIRILMIŞ)
+# SES MOTORU (HIZLANDIRILMIŞ VE HATASIZ)
 # -----------------------------------
 def speak(text):
     try:
-        # Sesi Google'dan alıyoruz (lang='tr' ile doğrudan Türkçe)
         tts = gTTS(text=text, lang='tr', slow=False)
         
-        # Sesi diske kaydetmek yerine RAM'de (bellekte) tutuyoruz
-        fp = io.BytesIO()
-        tts.write_to_fp(fp)
-        fp.seek(0) # Dosyanın başına dön
+        # Temp hatasını çözmek için her sese özel (zaman damgalı) isim veriyoruz
+        temp_file = f"temp_voice_{int(time.time() * 1000)}.mp3"
+        tts.save(temp_file)
         
-        # Pygame ile sesi bellekten anında çalıyoruz
-        pygame.mixer.music.load(fp, "mp3")
+        pygame.mixer.music.load(temp_file)
         pygame.mixer.music.play()
         
-        # Ses bitene kadar bekle (Asistanın lafı bitmeden dinlemeye geçmemesi için)
         while pygame.mixer.music.get_busy():
             pygame.time.Clock().tick(10)
+            
+        # Şarkı/ses bitince dosyayı bellekten sal ve bilgisayardan sil
+        pygame.mixer.music.unload()
+        try:
+            os.remove(temp_file)
+        except:
+            pass
             
     except Exception as e:
         ui_log(f"[SES HATASI]: {e}")
@@ -148,30 +158,28 @@ WAKE_WORDS = ["hey asistan", "asistan", "orda mısın"]
 def listen_for_wake_word():
     ui_status("Uyandırma Kelimesi Bekleniyor")
     command = take_command(mesaj="...", timeout_suresi=5, limit_suresi=5)
-    
-    # Using basic matching for wake words to avoid false triggers
     return any(wake_word in command for wake_word in WAKE_WORDS)
 
 # -----------------------------------
-# INTENT BUL (FUZZY MATCHING)
+# INTENT BUL (AKILLI FUZZY MATCHING)
 # -----------------------------------
 def intent_bul(command):
-    """
-    Uses Levenshtein distance to find the closest matching intent.
-    Returns None if the confidence score is below 75.
-    """
+    # Ses karışıklığını önle: Cümlede "ses" yoksa ses komutlarını arama
+    if "ses" not in command:
+        aranacak_komutlar = {k: v for k, v in KOMUTLAR.items() if not k.startswith("ses_")}
+    else:
+        aranacak_komutlar = KOMUTLAR
+
     best_intent = None
     highest_score = 0
 
-    for niyet, kelimeler in KOMUTLAR.items():
-        # extractOne compares the command to all keywords in the list and returns the highest match
+    for niyet, kelimeler in aranacak_komutlar.items():
         match, score = process.extractOne(command, kelimeler)
         
         if score > highest_score:
             highest_score = score
             best_intent = niyet
 
-    # Threshold: Only accept if the match is at least 75% accurate
     if highest_score >= 75:
         return best_intent
         
@@ -196,7 +204,6 @@ def tell_joke():
     asistan_mesaj(random.choice(jokes))
 
 def get_city(command):
-    # Modified slightly to handle fuzzy extraction gracefully
     temizlenecek_ekstra = ["da", "de", "için", "söyle", "hava", "durumu", "nasıl"]
     kelimeler = command.split()
     city_words = [k for k in kelimeler if k not in temizlenecek_ekstra]
@@ -207,16 +214,18 @@ def weather(city):
     try:
         url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={API_KEY}&units=metric&lang=tr"
         response = requests.get(url)
-        data = response.json()
-
-        if data["cod"] != 200:
-            asistan_mesaj("Şehri bulamadım.")
+        
+        if response.status_code != 200:
+            ui_log(f"[HAVA API HATASI]: Kod {response.status_code}")
+            asistan_mesaj("Hava durumu servisine şu an erişemiyorum.")
             return
 
+        data = response.json()
         derece = data["main"]["temp"]
         durum = data["weather"][0]["description"]
         asistan_mesaj(f"{city} için hava {durum}. Sıcaklık {round(derece)} derece.")
-    except:
+    except Exception as e:
+        ui_log(f"[HAVA DURUMU HATASI]: {e}")
         asistan_mesaj("Hava durumunu çekemedim.")
 
 def search_wikipedia(command):
@@ -233,28 +242,19 @@ def search_wikipedia(command):
     
     try:
         wikipedia.set_lang("tr")
-        
-        # 1. ADIM: Doğrudan sayfa çekmek yerine önce en iyi 1 sonucu aratıyoruz (Daha isabetli)
-        arama_sonuclari = wikipedia.search(query, results=1)
-        
-        if not arama_sonuclari:
-            asistan_mesaj("Vikipedi'de bununla ilgili bir şey bulamadım.")
-            return
-            
-        en_iyi_sonuc = arama_sonuclari[0]
-        
-        # 2. ADIM: auto_suggest=False yaparak gereksiz 2. API isteğini engelliyoruz (Hızlandırır)
-        sonuc = wikipedia.summary(en_iyi_sonuc, sentences=2, auto_suggest=False)
+        sonuc = wikipedia.summary(query, sentences=2, auto_suggest=True)
         asistan_mesaj(sonuc)
         
     except wikipedia.exceptions.DisambiguationError as e:
-        # HATA YÖNETİMİ: Eğer aranan kelime birden fazla anlama geliyorsa
-        try:
-            ilk_secenek = e.options[0]
-            sonuc = wikipedia.summary(ilk_secenek, sentences=2, auto_suggest=False)
-            asistan_mesaj(sonuc)
-        except:
-            asistan_mesaj("Bununla ilgili birden fazla sonuç var, biraz daha spesifik söyler misin?")
+        if e.options:
+            try:
+                ilk_secenek = e.options[0]
+                sonuc = wikipedia.summary(ilk_secenek, sentences=2, auto_suggest=False)
+                asistan_mesaj(sonuc)
+            except:
+                asistan_mesaj("Bununla ilgili çok fazla sonuç var, biraz daha spesifik söyler misin?")
+        else:
+            asistan_mesaj("Tam olarak neyi kastettiğini anlayamadım.")
             
     except wikipedia.exceptions.PageError:
         asistan_mesaj("Vikipedi'de böyle bir sayfa bulamadım.")
@@ -263,55 +263,47 @@ def search_wikipedia(command):
         asistan_mesaj("Araştırma sırasında bir hata oluştu.")
 
 # -----------------------------------
-# UYGULAMA AÇMA (FUZZY MATCHING İLE)
+# UYGULAMA AÇMA (SINIRSIZ - DİNAMİK ARAMA)
 # -----------------------------------
 def open_application(command):
-    uygulamalar = {
-        "spotify": "spotify",
-        "google chrome": "chrome",
-        "chrome": "chrome",
-        "not defteri": "notepad",
-        "hesap makinesi": "calc",
+    temizlenecek = ["aç", "başlat", "çalıştır", "açar", "mısın", "lütfen"]
+    kelimeler = command.split()
+    uygulama_adi = " ".join([k for k in kelimeler if k not in temizlenecek]).strip()
+
+    if not uygulama_adi:
+        asistan_mesaj("Neyi açmamı istersin?")
+        return
+
+    asistan_mesaj(f"{uygulama_adi.title()} açılıyor...")
+    
+    # Çok sık kullanılan web siteleri ve özel uygulamalar
+    ozel_siteler = {
         "youtube": "https://www.youtube.com",
         "google": "https://www.google.com",
-        "word": "winword",
-        "excel": "excel",
-        "powerpoint": "powerpnt",
-        "paint": "mspaint",
-        "görev yöneticisi": "taskmgr",
-        "komut istemi": "cmd",
-        "denetim masası": "control",
-        "ayarlar": "ms-settings:",
-        "dosya gezgini": "explorer",
-        "steam": "steam",
-        "discord": "discord",
-        "whatsapp": "whatsapp",
-        "twitter": "https://www.twitter.com",
-        "instagram": "https://www.instagram.com",
-        "github": "https://www.github.com",
-        "chatgpt": "https://chatgpt.com"
+        "chatgpt": "https://chatgpt.com",
+        "whatsapp": "whatsapp://"
     }
-
-    # Cümle içinde uygulama adını fuzzy matching ile arıyoruz
-    en_iyi_eslesme, skor = process.extractOne(command, list(uygulamalar.keys()))
-
-    if skor >= 70:  # Eğer eşleşme oranı %70 ve üzeriyse
-        asistan_mesaj(f"{en_iyi_eslesme.title()} açılıyor...")
-        hedef = uygulamalar[en_iyi_eslesme]
+    
+    if uygulama_adi in ozel_siteler:
         try:
-            if hedef.startswith("http"):
-                webbrowser.open(hedef)
-            elif sys.platform == 'win32':
-                os.system(f"start {hedef}")
-            elif sys.platform == 'darwin':
-                subprocess.call(['open', '-a', hedef])
+            if uygulama_adi == "whatsapp":
+                os.system(f"start {ozel_siteler[uygulama_adi]}")
             else:
-                subprocess.call([hedef])
-        except Exception as e:
-            ui_log(f"[UYGULAMA AÇMA HATASI]: {e}")
-            asistan_mesaj("Uygulamayı açarken bir sorun oluştu.")
-    else:
-        asistan_mesaj("Hangi uygulamayı açmamı istediğini tam anlayamadım.")
+                webbrowser.open(ozel_siteler[uygulama_adi])
+        except:
+            pass
+        return
+
+    # Eğer web sitesi veya özel kısayol değilse bilgisayarda dinamik arama yap
+    try:
+        pyautogui.press("win")
+        time.sleep(0.5)
+        pyautogui.write(uygulama_adi, interval=0.05)
+        time.sleep(0.5)
+        pyautogui.press("enter")
+    except Exception as e:
+        ui_log(f"[UYGULAMA AÇMA HATASI]: {e}")
+        asistan_mesaj("Uygulamayı açarken bir sorun oluştu.")
 
 # -----------------------------------
 # ANA ASİSTAN DÖNGÜSÜ
@@ -341,6 +333,7 @@ def run_assistant():
             search_wikipedia(command)
         elif niyet == "haber":
             asistan_mesaj("Haberler çekiliyor...")
+            get_news()
         elif niyet == "yazi_tura":
             asistan_mesaj(f"Sonuç: {random.choice(['Yazı', 'Tura'])}")
         elif niyet == "zar":
@@ -351,14 +344,51 @@ def run_assistant():
             asistan_mesaj("Ekran görüntüsü alındı.")
         elif niyet == "uygulama_ac":
             open_application(command)
-        elif niyet in ["ses_kapat", "ses_ac", "ses_yukselt", "ses_kis"]:
-            asistan_mesaj(f"{niyet.replace('_', ' ')} işlemi yapıldı.")
+            
+        # GERÇEK SES KONTROLLERİ
+        elif niyet == "ses_kapat":
+            pyautogui.press("volumemute") 
+            asistan_mesaj("Ses kapatıldı.")
+        elif niyet == "ses_ac":
+            # Barın kalması veya çalışmaması bug'ını önlemek için Sesi Aç tuşu tetiklenir
+            for _ in range(2): pyautogui.press("volumeup")
+            asistan_mesaj("Ses açıldı.")
+        elif niyet == "ses_yukselt":
+            for _ in range(5): pyautogui.press("volumeup") 
+            asistan_mesaj("Ses yükseltildi.")
+        elif niyet == "ses_kis":
+            for _ in range(5): pyautogui.press("volumedown")
+            asistan_mesaj("Ses kısıldı.")
+            
         elif niyet == "cikis":
             asistan_mesaj("Tamam kral. Tekrar çağırırsan buradayım.")
             return True
         else:
             asistan_mesaj("Bunu tam anlayamadım. Farklı şekilde söyler misin?")
 
+            #haber çekme
+def get_news():
+    try:
+        # Google Haberler (Türkiye) güncel RSS kaynağı
+        url = "https://news.google.com/rss?hl=tr&gl=TR&ceid=TR:tr"
+        feed = feedparser.parse(url)
+        
+        if not feed.entries:
+            asistan_mesaj("Şu an haber kaynağına ulaşamıyorum.")
+            return
+
+        asistan_mesaj("İşte Türkiye'den ve dünyadan güncel 3 haber başlığı:")
+        
+        # En güncel ilk 3 haberi çekip okutuyoruz
+        for i, entry in enumerate(feed.entries[:3]):
+            # Google haber başlıklarının sonundaki kaynak kısmını (örn: " - NTV") temizleyelim ki güzel okusun
+            baslik = entry.title.split(" - ")[0]
+            asistan_mesaj(f"{i+1}. haber: {baslik}")
+            time.sleep(0.5) # Haberler arasına çok kısa bir es koy
+            
+    except Exception as e:
+        ui_log(f"[HABER HATASI]: {e}")
+        asistan_mesaj("Haberleri çekerken bir sorun oluştu.")
 # -----------------------------------
 # THREAD BAŞLATMA
 # -----------------------------------
